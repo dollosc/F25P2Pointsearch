@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>F25P2高程點查詢系統</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin:0; font-family:"Microsoft JhengHei", Arial, sans-serif; background:#f3f6fb; color:#1f2937; }
+  .wrap { max-width:1550px; margin:0 auto; padding:18px; }
+  .title { font-size:26px; font-weight:900; margin-bottom:8px; }
+  .subtitle { color:#4b5563; margin-bottom:16px; line-height:1.55; }
+  .toolbar { display:grid; grid-template-columns:1.5fr 180px 180px 130px; gap:10px; margin-bottom:14px; }
+  .toolbar input,.toolbar select,.toolbar button { border:1px solid #cbd5e1; border-radius:10px; padding:11px 12px; font-size:14px; background:#fff; }
+  .toolbar button { background:#2563eb; color:#fff; cursor:pointer; font-weight:800; }
+  .grid { display:grid; grid-template-columns:430px 1fr 330px; gap:14px; align-items:start; }
+  .card { background:#fff; border-radius:16px; box-shadow:0 8px 24px rgba(15,23,42,.08); overflow:hidden; }
+  .card-header { padding:14px 16px; border-bottom:1px solid #e5e7eb; font-weight:900; font-size:16px; }
+  .card-body { padding:12px; }
+  .table-wrap { max-height:760px; overflow:auto; }
+  table { width:100%; border-collapse:collapse; }
+  th,td { padding:10px 8px; border-bottom:1px solid #eef2f7; text-align:left; font-size:13px; }
+  th { position:sticky; top:0; background:#f8fafc; z-index:1; }
+  tr { cursor:pointer; } tr:hover { background:#f8fbff; } tr.active { background:#dbeafe; }
+  .stats { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:12px; }
+  .stat { background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:10px; font-size:13px; }
+  .stat b { display:block; font-size:16px; color:#0f172a; margin-top:4px; }
+  .map-shell { padding:12px; }
+  .legend { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px; font-size:12px; color:#475569; }
+  .chip { background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; padding:4px 8px; border-radius:999px; }
+  .map-note { font-size:12px; color:#475569; margin-bottom:8px; line-height:1.5; }
+  .map-frame { width:100%; aspect-ratio: 1.2 / 1; border:1px solid #dbe2ea; border-radius:14px; background:#fcfdff; position:relative; overflow:hidden; }
+  svg { width:100%; height:100%; display:block; }
+  .detail-grid { display:grid; grid-template-columns:90px 1fr; gap:10px 12px; font-size:14px; }
+  .label { color:#64748b; font-weight:800; } .value { color:#0f172a; word-break:break-word; } .empty { color:#64748b; padding:8px 2px; line-height:1.6; }
+  @media (max-width:1200px) { .grid{grid-template-columns:1fr;} .toolbar{grid-template-columns:1fr 1fr;} }
+  @media (max-width:640px) { .toolbar{grid-template-columns:1fr;} .title{font-size:22px;} .map-frame{aspect-ratio:1/1;} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="title">F25P2高程點查詢系統</div>
+  <div class="subtitle">湘婷出品，必出精品</div>
+  <div class="toolbar">
+    <input id="searchInput" type="text" placeholder="搜尋點位、樓層、高程或座標，例如：B04-1、L10、191.690">
+    <select id="floorFilter"><option value="">全部樓層</option></select>
+    <select id="axisFilter"><option value="">全部軸線</option></select>
+    <button id="resetBtn">重設</button>
+  </div>
+  <div class="grid">
+    <div class="card"><div class="card-header">查詢結果（樓層 / 點位 / 高程 / 軸線）</div><div class="card-body">
+      <div class="stats"><div class="stat">目前顯示筆數<b id="countText">0</b></div><div class="stat">可定位筆數<b id="mappedCountText">0</b></div></div>
+      <div class="table-wrap"><table><thead><tr><th>樓層</th><th>點位</th><th>高程</th><th>軸線</th></tr></thead><tbody id="tableBody"></tbody></table></div>
+    </div></div>
+    <div class="card"><div class="card-header">簡易平面圖</div><div class="map-shell">
+      <div class="legend"><span class="chip">E值：橫向</span><span class="chip">N值：縱向</span><span class="chip">依座標自動縮放</span></div>
+      <div class="map-note">目前 Excel 未提供軸線欄位，所以平面圖以原始 E/N 座標自動縮放定位。之後若要顯示軸線，可在 Excel 新增 X軸線、Y軸線或軸線位置欄位。</div>
+      <div class="map-frame"><svg id="mapSvg" viewBox="0 0 1200 1000" preserveAspectRatio="xMidYMid meet"></svg></div>
+    </div></div>
+    <div class="card info-box"><div class="card-header">點位完整資料</div><div class="card-body" id="detailBox"><div class="empty">請從左邊表格或中間平面圖點選一個點位。</div></div></div>
+  </div>
+</div>
+<script>
+const rawData = [{"id":1,"樓層":"L10","點位":"B04-1","高程":"EL+191.690m","N值":"93.853","E值":"1061.881","X軸線":"","Y軸線":"","軸線位置":""},{"id":2,"樓層":"L10","點位":"B04-2","高程":"EL+191.115m","N值":"71.03","E值":"966.526","X軸線":"","Y軸線":"","軸線位置":""},{"id":3,"樓層":"L10","點位":"B03-1","高程":"EL+200.542m","N值":"156.49","E值":"1012.842","X軸線":"","Y軸線":"","軸線位置":""},{"id":4,"樓層":"L10","點位":"B03-2","高程":"EL+200.768m","N值":"157.092","E值":"937.685","X軸線":"","Y軸線":"","軸線位置":""},{"id":5,"樓層":"L10","點位":"B02-1","高程":"EL+208.705m","N值":"358.074","E值":"1093.84","X軸線":"","Y軸線":"","軸線位置":""},{"id":6,"樓層":"L10","點位":"B02-2","高程":"EL+208.695m","N值":"362.821","E值":"976.793","X軸線":"","Y軸線":"","軸線位置":""}];
+const xAxes = [{"name":"925.2","value":925.1926},{"name":"961.4","value":961.4206},{"name":"997.6","value":997.6485},{"name":"1033.9","value":1033.8765},{"name":"1070.1","value":1070.1044},{"name":"1106.3","value":1106.3324}];
+const yAxes = [{"name":"47.7","value":47.6867},{"name":"115.4","value":115.3822},{"name":"183.1","value":183.0777},{"name":"250.8","value":250.7733},{"name":"318.5","value":318.4688},{"name":"386.2","value":386.1643}];
+const state = { selectedId:null, keyword:"", floor:"", axis:"" };
+function parseNum(v) { if(v===null||v===undefined||v==="") return null; const n=Number(v); return Number.isFinite(n)?n:null; }
+function esc(v) { return String(v ?? "").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#39;"); }
+const data = rawData.map(r => ({...r, nNum:parseNum(r["N值"]), eNum:parseNum(r["E值"]), 樓層:r["樓層"]||"", 點位:r["點位"]||"", 高程:r["高程"]||"", 軸線位置:r["軸線位置"]||"", 日期:r["日期"]||""}));
+function initFilters() {
+  [...new Set(data.map(d=>d.樓層).filter(Boolean))].sort().forEach(f=>{ const op=document.createElement('option'); op.value=f; op.textContent=f; floorFilter.appendChild(op); });
+  const labels=[...new Set(data.flatMap(d=>[d.X軸線,d.Y軸線]).filter(Boolean))].sort((a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true}));
+  labels.forEach(a=>{ const op=document.createElement('option'); op.value=a; op.textContent=a; axisFilter.appendChild(op); });
+}
+function getFilteredData() {
+  const kw=state.keyword.trim().toLowerCase();
+  return data.filter(d=>{
+    const okFloor=!state.floor||d.樓層===state.floor;
+    const okAxis=!state.axis||d.X軸線===state.axis||d.Y軸線===state.axis;
+    const text=[d.樓層,d.點位,d.高程,d.N值,d.E值,d.日期,d.X軸線,d.Y軸線,d.軸線位置].join(' ').toLowerCase();
+    return okFloor && okAxis && (!kw || text.includes(kw));
+  }).sort((a,b)=>(a.點位||'').localeCompare((b.點位||''),undefined,{numeric:true,sensitivity:'base'}));
+}
+function renderTable() {
+  const list=getFilteredData(); tableBody.innerHTML=''; countText.textContent=list.length; mappedCountText.textContent=list.filter(d=>d.nNum!==null&&d.eNum!==null).length;
+  list.forEach(row=>{ const tr=document.createElement('tr'); if(row.id===state.selectedId) tr.classList.add('active'); tr.innerHTML=`<td>${esc(row.樓層)}</td><td>${esc(row.點位||'—')}</td><td>${esc(row.高程)}</td><td>${esc(row.軸線位置||'—')}</td>`; tr.onclick=()=>selectRow(row.id); tableBody.appendChild(tr); });
+}
+function renderDetail() {
+  const row=data.find(d=>d.id===state.selectedId);
+  if(!row) { detailBox.innerHTML='<div class="empty">請從左邊表格或中間平面圖點選一個點位。</div>'; return; }
+  detailBox.innerHTML=`<div class="detail-grid">
+    <div class="label">樓層</div><div class="value">${esc(row.樓層||'—')}</div>
+    <div class="label">點位</div><div class="value">${esc(row.點位||'—')}</div>
+    <div class="label">高程</div><div class="value">${esc(row.高程||'—')}</div>
+    <div class="label">日期</div><div class="value">${esc(row.日期||'—')}</div>
+    <div class="label">軸線位置</div><div class="value">${esc(row.軸線位置||'—')}</div>
+    <div class="label">X軸線</div><div class="value">${esc(row.X軸線||'—')}</div>
+    <div class="label">Y軸線</div><div class="value">${esc(row.Y軸線||'—')}</div>
+    <div class="label">原N/E</div><div class="value">N: ${esc(row.N值||'—')}<br>E: ${esc(row.E值||'—')}</div>
+  </div>`;
+}
+function renderMap() {
+  const svg=document.getElementById('mapSvg'); const list=getFilteredData().filter(d=>d.nNum!==null&&d.eNum!==null);
+  const W=1200,H=1000,padL=92,padR=36,padT=52,padB=72,innerW=W-padL-padR,innerH=H-padT-padB;
+  const minE=Math.min(...xAxes.map(a=>a.value)), maxE=Math.max(...xAxes.map(a=>a.value));
+  const minN=Math.min(...yAxes.map(a=>a.value)), maxN=Math.max(...yAxes.map(a=>a.value));
+  const eSpan=maxE-minE||1, nSpan=maxN-minN||1;
+  const x=e=>padL+((e-minE)/eSpan)*innerW; const y=n=>padT+((maxN-n)/nSpan)*innerH;
+  let out=`<rect x="0" y="0" width="${W}" height="${H}" fill="#fcfdff"/><rect x="${padL}" y="${padT}" width="${innerW}" height="${innerH}" fill="#fff" stroke="#cbd5e1" stroke-width="2"/>`;
+  xAxes.forEach(a=>{ const xx=x(a.value); const half=String(a.name).includes('.5'); out += `<line x1="${xx}" y1="${padT}" x2="${xx}" y2="${padT+innerH}" stroke="#cbd5e1" stroke-width="${half?1:1.3}" stroke-dasharray="${half?'8 7':'0'}" opacity=".9"/><text x="${xx}" y="${padT+innerH+28}" text-anchor="middle" font-size="15" fill="#334155" font-weight="700">${esc(a.name)}</text>`; });
+  yAxes.forEach(a=>{ const yy=y(a.value); const half=String(a.name).includes('.5'); out += `<line x1="${padL}" y1="${yy}" x2="${padL+innerW}" y2="${yy}" stroke="#cbd5e1" stroke-width="${half?1:1.3}" stroke-dasharray="${half?'8 7':'0'}" opacity=".9"/><text x="${padL-18}" y="${yy+5}" text-anchor="end" font-size="15" fill="#334155" font-weight="700">${esc(a.name)}</text>`; });
+  list.forEach(row=>{ const xx=x(row.eNum), yy=y(row.nNum), sel=row.id===state.selectedId; out += `<g class="point" data-id="${row.id}" style="cursor:pointer"><circle cx="${xx}" cy="${yy}" r="${sel?10:6.5}" fill="${sel?'#f97316':'#2563eb'}" stroke="#0f172a" stroke-width="2"/><text x="${xx+10}" y="${yy-10}" font-size="15" font-weight="${sel?900:700}" fill="#0f172a">${esc(row.點位||'(空白)')}</text><title>${esc(row.點位)}｜${esc(row.軸線位置)}｜${esc(row.高程)}</title></g>`; });
+  if(!list.length) out += `<text x="600" y="500" text-anchor="middle" font-size="26" fill="#64748b">目前篩選結果沒有可定位點位</text>`;
+  svg.innerHTML=out; svg.querySelectorAll('.point').forEach(el=>el.onclick=()=>selectRow(Number(el.dataset.id)));
+}
+function selectRow(id) { state.selectedId=id; renderAll(); }
+function renderAll() { const current=getFilteredData(); if(state.selectedId && !current.some(d=>d.id===state.selectedId)) state.selectedId=null; renderTable(); renderDetail(); renderMap(); }
+searchInput.oninput=e=>{state.keyword=e.target.value;renderAll();}; floorFilter.onchange=e=>{state.floor=e.target.value;renderAll();}; axisFilter.onchange=e=>{state.axis=e.target.value;renderAll();}; resetBtn.onclick=()=>{state.selectedId=null;state.keyword='';state.floor='';state.axis='';searchInput.value='';floorFilter.value='';axisFilter.value='';renderAll();};
+initFilters(); renderAll();
+</script>
+</body>
+</html>
